@@ -34,6 +34,18 @@
 <h3>Cargar export de Power Supply</h3>
 <div class="mut">Subes el CSV/Excel del día → se compara contra las tarjetas → revisas → aplicas.</div>
 
+<div style="margin:12px 0">
+  <label>Marca de este archivo</label>
+  <select id="brand">
+    <option value="Opel">Opel</option>
+    <option value="Citroën">Citroën</option>
+    <option value="Peugeot">Peugeot</option>
+    <option value="Fiat">Fiat</option>
+    <option value="DS">DS</option>
+  </select>
+  <div class="mut" id="brandHint" style="margin-top:4px"></div>
+</div>
+
 <div class="grid" id="mapBox">
   <div><label>Lista de PENDIENTES</label><select id="listPend"></select></div>
   <div><label>Lista de DESAPARECIDOS</label><select id="listGone"></select></div>
@@ -52,9 +64,6 @@
     <div class="stat same"><div class="v" id="cSame">0</div><div class="l">Iguales</div></div>
   </div>
   <div class="scroll"><table id="tbl"></table></div>
-  <div class="row">
-    <label class="pill"><input type="checkbox" id="optDiscord" style="width:auto"> Avisar a Discord al terminar</label>
-  </div>
   <div class="row"><button class="ok" id="apply">Aplicar al tablero</button>
     <button class="ghost" id="reparse">Volver a comparar</button></div>
 </div>
@@ -94,7 +103,6 @@ function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>
   function fill(sel,sid){var s=$(sid);s.innerHTML='';lists.forEach(l=>{var o=document.createElement('option');o.value=l.id;o.textContent=l.name;if(l.id===sel)o.selected=true;s.appendChild(o);});}
   fill(SET.listPend || (lists.find(l=>/pend|falt/i.test(l.name))||{}).id, 'listPend');
   fill(SET.listGone || (lists.find(l=>/desap|resuel|factur|anul|hist/i.test(l.name))||{}).id, 'listGone');
-  $('optDiscord').checked = !!SET.discord;
 })();
 
 /* archivo */
@@ -105,36 +113,42 @@ $('file').onchange=e=>load(e.target.files[0]);
 $('drop').addEventListener('drop',e=>load(e.dataTransfer.files[0]));
 async function load(f){ if(!f) return;
   try{ FILE=await PS.readFile(f);
+    var det=PS.detectBrand(FILE.rows);
+    if(det){ $('brand').value=det; $('brandHint').textContent='Marca detectada del archivo: '+det+'. Cámbiala si no es correcta.'; }
+    else { $('brandHint').textContent='No pude detectar la marca; elígela a mano.'; }
     $('fileInfo').className='row';
-    $('fileInfo').innerHTML='<span class="pill">📄 '+f.name+'</span><span class="pill">'+FILE.rows.length+' líneas</span>';
+    $('fileInfo').innerHTML='<span class="pill">📄 '+f.name+'</span><span class="pill">'+FILE.rows.length+' líneas</span><span class="pill">'+$('brand').value+'</span>';
     await diff(); $('preview').classList.remove('hide'); t.sizeTo('body');
   }catch(e){ alert('No pude leer: '+e.message); }
 }
+$('brand').onchange=function(){ if(FILE) diff(); };
 
 /* diff */
 async function diff(){
-  var P=$('listPend').value, G=$('listGone').value;
+  var P=$('listPend').value, G=$('listGone').value, BRAND=$('brand').value;
   var cP=await api('GET','/lists/'+P+'/cards',{fields:'name,desc,idList'});
   var cG=await api('GET','/lists/'+G+'/cards',{fields:'name,desc,idList'});
   var board={};
-  cP.forEach(c=>{var m=PS.parseMarker(c.desc); if(m) board[m.key]={card:c,snap:m.snap,log:m.log,flag:m.flag,where:'pend'};});
-  cG.forEach(c=>{var m=PS.parseMarker(c.desc); if(m&&!board[m.key]) board[m.key]={card:c,snap:m.snap,log:m.log,flag:m.flag,where:'gone'};});
+  cP.forEach(c=>{var m=PS.parseMarker(c.desc); if(m) board[m.key]={card:c,snap:m.snap,log:m.log,flag:m.flag,brand:m.brand,where:'pend'};});
+  cG.forEach(c=>{var m=PS.parseMarker(c.desc); if(m&&!board[m.key]) board[m.key]={card:c,snap:m.snap,log:m.log,flag:m.flag,brand:m.brand,where:'gone'};});
   var fm={}; FILE.rows.forEach(o=>{var k=PS.keyOf(o); if(k&&k!=='-') fm[k]=o;});
   var nuevos=[],reap=[],camb=[],ig=[],gone=[],refresh=[];
   for(var k in fm){var o=fm[k],cur=board[k];
-    if(!cur){nuevos.push({k,o});continue;}
+    var sameBrand = cur && (!cur.brand || cur.brand===BRAND);   // misma marca o sin marca (migración)
+    if(!cur || !sameBrand){ nuevos.push({k,o}); continue; }
     var d=PS.snapDiff(cur.snap,PS.snapOf(o));
     if(cur.where==='gone') reap.push({k,o,cur,diff:d});
     else if(d.length) camb.push({k,o,cur,diff:d});
-    else if((!cur.snap || cur.snap.ot===undefined) && PS.col(o,'OT')) refresh.push({k,o,cur}); // backfill OT
+    else if((!cur.snap || cur.snap.ot===undefined) || cur.brand!==BRAND) refresh.push({k,o,cur}); // backfill OT/marca
     else ig.push({k});
   }
-  for(var k2 in board){ if(board[k2].where==='pend'&&!fm[k2]) gone.push({k:k2,cur:board[k2]}); }
-  DIFF={nuevos,gone,reap,camb,ig,refresh};
+  // solo desaparecen las de ESTA marca
+  for(var k2 in board){ if(board[k2].where==='pend' && board[k2].brand===BRAND && !fm[k2]) gone.push({k:k2,cur:board[k2]}); }
+  DIFF={nuevos,gone,reap,camb,ig,refresh,brand:BRAND};
   $('cNew').textContent=nuevos.length;$('cGone').textContent=gone.length;$('cReap').textContent=reap.length;
   $('cChg').textContent=camb.length;$('cSame').textContent=ig.length;
   var rows=['<tr><th>Tipo</th><th>Ref</th><th>SAP-Puesto</th><th>Detalle</th></tr>'];
-  nuevos.forEach(x=>rows.push(tr('t-new','NUEVO',PS.cardName(x.o),x.k,esc(PS.col(x.o,'Estado'))+' · '+esc(PS.col(x.o,'Fecha de entrega')))));
+  nuevos.forEach(x=>rows.push(tr('t-new','NUEVO',PS.cardName(x.o),x.k,esc(PS.es(PS.col(x.o,'Estado')))+' · '+esc(PS.es(PS.col(x.o,'Fecha de entrega'))))));
   reap.forEach(x=>rows.push(tr('t-reap','REAPARECE',x.cur.card.name,x.k,'Vuelve a Pendientes')));
   camb.forEach(x=>rows.push(tr('t-chg','CAMBIO',x.cur.card.name,x.k,x.diff.map(d=>'<b>'+d.campo+':</b> '+esc(d.de)+' → '+esc(d.a)).join('<br>'))));
   gone.forEach(x=>rows.push(tr('t-gone','DESAPARECE',x.cur.card.name,x.k,'Facturado/anulado')));
@@ -144,31 +158,46 @@ function tr(c,tg,n,k,d){return '<tr><td><span class="tag '+c+'">'+tg+'</span></t
 $('reparse').onclick=diff;
 
 /* aplicar */
+var LABELS={};
+async function ensureBrandLabel(brand){
+  if(LABELS[brand]) return LABELS[brand];
+  var labs=await api('GET','/boards/'+BOARD+'/labels',{fields:'name,color'});
+  var f=labs.find(l=>l.name===brand);
+  if(f){ LABELS[brand]=f.id; return f.id; }
+  var color=({Opel:'orange',Peugeot:'blue','Citroën':'sky',Fiat:'pink',DS:'black'})[brand]||'purple';
+  var r=await api('POST','/labels',{name:brand,color:color,idBoard:BOARD});
+  LABELS[brand]=r.id; return r.id;
+}
+
 $('apply').onclick=async function(){
   $('run').classList.remove('hide'); $('log').innerHTML=''; t.sizeTo('body');
-  var total=DIFF.nuevos.length+DIFF.gone.length+DIFF.reap.length+DIFF.camb.length, done=0, T=PS.today();
+  var total=DIFF.nuevos.length+DIFF.gone.length+DIFF.reap.length+DIFF.camb.length, done=0, T=PS.today(), BRAND=DIFF.brand;
   var tick=()=>{done++;$('prog').style.width=Math.round(done/Math.max(total,1)*100)+'%';};
   var P=$('listPend').value, G=$('listGone').value;
-  // guarda mapping + discord
-  SET.listPend=P; SET.listGone=G; SET.discord=$('optDiscord').checked?SET.discord:SET.discord;
+  SET.listPend=P; SET.listGone=G;
   await t.set('board','shared','ps_settings',SET);
   try{
+    var LBL=await ensureBrandLabel(BRAND);
     for(const x of DIFF.nuevos){
-      var snap=PS.snapOf(x.o), p={idList:P,name:PS.cardName(x.o),desc:PS.buildDesc(x.o,x.k,snap,null,[]),pos:'top'};
+      var snap=PS.snapOf(x.o), p={idList:P,name:PS.cardName(x.o),desc:PS.buildDesc(x.o,x.k,snap,null,[],BRAND),pos:'top'};
       var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); if(due)p.due=due;
-      await api('POST','/cards',p); log('s','＋ '+x.k+'  '+PS.cardName(x.o)); tick();
+      var card=await api('POST','/cards',p);
+      if(card&&card.id) await api('POST','/cards/'+card.id+'/idLabels',{value:LBL});
+      log('s','＋ '+x.k+'  '+PS.cardName(x.o)); tick();
     }
     for(const x of DIFF.reap){
       var snap=PS.snapOf(x.o), log0=(x.cur.log||[]).concat([{d:T,c:[{campo:'Reaparece',de:'Desaparecidos',a:'Pendientes'}]}]);
-      var p={idList:P,desc:PS.buildDesc(x.o,x.k,snap,T,log0)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); if(due)p.due=due;
+      var p={idList:P,desc:PS.buildDesc(x.o,x.k,snap,T,log0,BRAND)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); if(due)p.due=due;
       await api('PUT','/cards/'+x.cur.card.id,p);
+      await api('POST','/cards/'+x.cur.card.id+'/idLabels',{value:LBL});
       await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'↩ Reaparece ('+T+'). Devuelta a Pendientes.'});
       log('s','↩ '+x.k); tick();
     }
     for(const x of DIFF.camb){
       var snap=PS.snapOf(x.o), log0=(x.cur.log||[]).concat([{d:T,c:x.diff}]);
-      var p={desc:PS.buildDesc(x.o,x.k,snap,T,log0)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); p.due=due||null;
+      var p={desc:PS.buildDesc(x.o,x.k,snap,T,log0,BRAND)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); p.due=due||null;
       await api('PUT','/cards/'+x.cur.card.id,p);
+      await api('POST','/cards/'+x.cur.card.id+'/idLabels',{value:LBL});
       await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'🔔 Cambios ('+T+'):\n'+x.diff.map(d=>'• '+d.campo+': '+d.de+' → '+d.a).join('\n')});
       log('w','✎ '+x.k+' ('+x.diff.map(d=>d.campo).join(', ')+')'); tick();
     }
@@ -177,28 +206,19 @@ $('apply').onclick=async function(){
       await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'❌ Desapareció del listado el '+T+' (posible facturación o anulación).'});
       log('e','✗ '+x.k+'  '+x.cur.card.name); tick();
     }
-    // refresco silencioso: añade la OT a tarjetas antiguas sin marcarlas como cambio
+    // refresco silencioso: añade OT/marca a tarjetas antiguas sin marcarlas como cambio
     for(const x of (DIFF.refresh||[])){
       var snap=PS.snapOf(x.o);
-      await api('PUT','/cards/'+x.cur.card.id,{desc:PS.buildDesc(x.o,x.k,snap,x.cur.flag,x.cur.log||[])});
+      await api('PUT','/cards/'+x.cur.card.id,{desc:PS.buildDesc(x.o,x.k,snap,x.cur.flag,x.cur.log||[],BRAND)});
+      await api('POST','/cards/'+x.cur.card.id+'/idLabels',{value:LBL});
     }
-    if(DIFF.refresh && DIFF.refresh.length) log('s','↻ '+DIFF.refresh.length+' tarjetas: OT añadida.');
+    if(DIFF.refresh && DIFF.refresh.length) log('s','↻ '+DIFF.refresh.length+' tarjetas: OT/marca añadida.');
     $('prog').style.width='100%';
-    await t.set('board','shared','ps_last',{cambios:DIFF.camb.length,gone:DIFF.gone.length,nuevos:DIFF.nuevos.length,fecha:T});
-    log('s','Hecho: '+DIFF.nuevos.length+' nuevos · '+DIFF.gone.length+' desaparecidos · '+DIFF.reap.length+' reaparecen · '+DIFF.camb.length+' cambios.');
-    if($('optDiscord').checked && SET.discord) await discord(T);
+    await t.set('board','shared','ps_last',{cambios:DIFF.camb.length,gone:DIFF.gone.length,nuevos:DIFF.nuevos.length,fecha:T,brand:BRAND});
+    log('s',BRAND+' → '+DIFF.nuevos.length+' nuevos · '+DIFF.gone.length+' desaparecidos · '+DIFF.reap.length+' reaparecen · '+DIFF.camb.length+' cambios.');
     setTimeout(()=>t.closeModal(), 1800);
   }catch(e){ log('e','ERROR: '+e.message); }
 };
-async function discord(T){
-  var lines=['**📦 Power Supply — '+T+'**',
-    '• Nuevos: '+DIFF.nuevos.length+'  • Desaparecidos: '+DIFF.gone.length+'  • Cambios: '+DIFF.camb.length];
-  DIFF.gone.slice(0,10).forEach(x=>lines.push('❌ '+x.cur.card.name));
-  DIFF.camb.slice(0,10).forEach(x=>lines.push('🔔 '+x.cur.card.name+' ('+x.diff.map(d=>d.campo).join(', ')+')'));
-  try{ await fetch(SET.discord,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:lines.join('\n').slice(0,1900)})});
-    log('s','Aviso enviado a Discord.'); }
-  catch(e){ log('w','No pude avisar a Discord (CORS o URL). Detalle: '+e.message); }
-}
 function log(c,m){var s=document.createElement('span');s.className=c;s.textContent=m+'\n';$('log').appendChild(s);$('log').scrollTop=9e9;}
 </script>
 </body></html>

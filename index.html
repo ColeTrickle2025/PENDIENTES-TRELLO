@@ -16,6 +16,10 @@ function badgesFor(t){
     const m = PS.parseMarker(card.desc);
     if(!m || !m.snap) return [];
     const out=[];
+    if(m.brand){
+      var bc={Opel:'orange',Peugeot:'blue','Citroën':'sky',Fiat:'pink',DS:'black'}[m.brand]||'light-gray';
+      out.push({ text:m.brand, color:bc });
+    }
     out.push({ text: m.snap.est ? PS.es(m.snap.est)
                                     .replace('Pieza inicial mantenida','Inicial mant.')
                                     .replace('En preparación por Stellantis','Prep. Stellantis')
