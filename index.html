@@ -1,0 +1,87 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>PS connector</title>
+<script src="https://p.trellocdn.com/power-up.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/pssync.js"></script>
+</head>
+<body>
+<script>
+const ICON_DARK  = window.location.origin + window.location.pathname.replace(/index\.html$/,'') + 'icon.svg';
+const GRAY='#5e6c84';
+
+async function settings(t){ return t.get('board','shared','ps_settings',{}); }
+
+function badgesFor(t){
+  return t.card('desc').then(function(card){
+    const m = PS.parseMarker(card.desc);
+    if(!m || !m.snap) return [];
+    const out=[];
+    out.push({ text: m.snap.est ? m.snap.est.replace('Pieza inicial mantenida','Inicial mant.')
+                                          .replace('En cours de preparation par PSA','Prep. PSA')
+                                          .slice(0,18) : '—',
+               color: PS.estadoColor(m.snap) });
+    if(m.snap.ent) out.push({ text:'📦 '+PS.etaShort(m.snap), color:'light-gray' });
+    if(m.snap.prio) out.push({ text:'P'+m.snap.prio, color: (m.snap.prio<=2?'red':'sky') });
+    if(m.flag){
+      const days = Math.floor((Date.now()-Date.parse(m.flag))/86400000);
+      if(days <= (window.PS_CONFIG.ALERT_DAYS||1)) out.push({text:'🔔 cambió', color:'yellow'});
+    }
+    if(m.snap.alt) out.push({text:'↔ alternativa', color:'purple'});
+    return out;
+  });
+}
+
+TrelloPowerUp.initialize({
+
+  'board-buttons': function(t){
+    return t.get('board','shared','ps_last',{}).then(function(last){
+      var extra = (last && last.cambios!=null) ? '  ('+last.cambios+'✎ '+last.gone+'✗)' : '';
+      return [{
+        icon:{dark:ICON_DARK, light:ICON_DARK},
+        text:'Power Supply'+extra,
+        callback:function(t){
+          return t.modal({ url:'import.html', title:'Cargar export de Power Supply',
+                           fullscreen:true, height:600 });
+        }
+      }];
+    });
+  },
+
+  'card-badges': function(t){ return badgesFor(t); },
+  'card-detail-badges': function(t){ return badgesFor(t); },
+
+  'card-back-section': function(t){
+    return { title:'Power Supply · historial', icon:ICON_DARK,
+             content:{ type:'iframe', url:t.signUrl('history.html'), height:200 } };
+  },
+
+  'card-buttons': function(t){
+    return [{
+      icon:ICON_DARK, text:'Marcar revisado',
+      callback:function(t){
+        return t.card('desc').then(function(c){
+          var d=(c.desc||'').replace(/\nPSFLAG=[0-9-]+/, '');   // quita el flag de "cambió"
+          return t.getRestApi().getToken().then(function(tok){
+            return fetch('https://api.trello.com/1/cards/'+t.getContext().card+
+              '?key='+PS_CONFIG.APP_KEY+'&token='+tok+'&desc='+encodeURIComponent(d), {method:'PUT'})
+              .then(function(){ return t.alert({message:'Marcada como revisada',duration:3}); });
+          });
+        });
+      }
+    }];
+  },
+
+  'show-settings': function(t){
+    return t.popup({ title:'Ajustes Power Supply', url:'settings.html', height:420 });
+  },
+
+  'authorization-status': function(t){
+    return t.getRestApi().isAuthorized().then(function(ok){ return {authorized:ok}; });
+  },
+  'show-authorization': function(t){
+    return t.popup({ title:'Conectar con Trello', url:'authorize.html', height:160 });
+  }
+
+}, { appKey: window.PS_CONFIG.APP_KEY, appName: window.PS_CONFIG.APP_NAME });
+</script>
+</body></html>

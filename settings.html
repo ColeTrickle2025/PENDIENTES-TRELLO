@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<script src="https://p.trellocdn.com/power-up.min.js"></script>
+<script src="js/config.js"></script>
+<style>
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#172b4d;padding:16px}
+  label{font-size:12px;color:#5e6c84;font-weight:600;display:block;margin:10px 0 3px}
+  select,input{width:100%;padding:8px;border:1px solid #dfe1e6;border-radius:6px;font-size:14px}
+  button{background:#0c66e4;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer;margin-top:14px}
+  .mut{color:#5e6c84;font-size:12px}
+</style></head><body>
+<label>Lista de PENDIENTES</label><select id="listPend"></select>
+<label>Lista de DESAPARECIDOS / RESUELTOS</label><select id="listGone"></select>
+<label>Webhook de Discord para alertas <span class="mut">(opcional)</span></label>
+<input id="discord" placeholder="https://discord.com/api/webhooks/...">
+<label>Días que dura el badge 🔔 tras un cambio</label><input id="days" type="number" min="0" value="1">
+<button id="save">Guardar</button>
+<p class="mut" id="msg"></p>
+<script>
+var t=TrelloPowerUp.iframe({appKey:PS_CONFIG.APP_KEY,appName:PS_CONFIG.APP_NAME});
+var KEY=PS_CONFIG.APP_KEY, TOKEN='';
+(async function(){
+  TOKEN=await t.getRestApi().getToken().catch(()=> '');
+  var s=await t.get('board','shared','ps_settings',{})||{};
+  var B=t.getContext().board, lists=[];
+  if(TOKEN){ lists=await fetch('https://api.trello.com/1/boards/'+B+'/lists?fields=name&filter=open&key='+KEY+'&token='+TOKEN).then(r=>r.json()); }
+  function fill(id,sel){var e=document.getElementById(id);lists.forEach(l=>{var o=document.createElement('option');o.value=l.id;o.textContent=l.name;if(l.id===sel)o.selected=true;e.appendChild(o);});}
+  fill('listPend',s.listPend); fill('listGone',s.listGone);
+  document.getElementById('discord').value=s.discord||'';
+  document.getElementById('days').value=(s.alertDays!=null?s.alertDays:1);
+})();
+document.getElementById('save').onclick=async function(){
+  var s={listPend:document.getElementById('listPend').value,listGone:document.getElementById('listGone').value,
+    discord:document.getElementById('discord').value.trim(),alertDays:+document.getElementById('days').value};
+  await t.set('board','shared','ps_settings',s);
+  document.getElementById('msg').textContent='Guardado ✓'; setTimeout(()=>t.closePopup(),700);
+};
+</script></body></html>

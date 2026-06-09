@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Cargar export</title>
+<script src="https://p.trellocdn.com/power-up.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/pssync.js"></script>
+<style>
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#172b4d;margin:0;padding:18px;background:#fff}
+  h3{margin:0 0 4px} .mut{color:#5e6c84;font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+  label{font-size:12px;color:#5e6c84;font-weight:600;display:block;margin-bottom:3px}
+  select,input{width:100%;padding:8px;border:1px solid #dfe1e6;border-radius:6px;font-size:14px}
+  .drop{border:2px dashed #c1c7d0;border-radius:10px;padding:24px;text-align:center;color:#5e6c84;cursor:pointer;margin-top:8px}
+  .drop.hot{border-color:#0c66e4;background:#e9f2ff}
+  button{background:#0c66e4;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer}
+  button.ok{background:#1f845a} button.ghost{background:#f1f2f4;color:#172b4d} button:disabled{opacity:.4;cursor:not-allowed}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:12px 0}
+  .stat{background:#f4f5f7;border-radius:8px;padding:10px;text-align:center}
+  .stat .v{font-size:22px;font-weight:800} .stat .l{font-size:10px;color:#5e6c84;text-transform:uppercase}
+  .new .v{color:#0c66e4}.gone .v{color:#c9372c}.chg .v{color:#974f0c}.reap .v{color:#1f845a}.same .v{color:#5e6c84}
+  table{width:100%;border-collapse:collapse;font-size:12.5px} th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #ebecf0;vertical-align:top}
+  th{color:#5e6c84;font-size:10px;text-transform:uppercase} .scroll{max-height:240px;overflow:auto;border:1px solid #ebecf0;border-radius:8px}
+  .tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px}
+  .t-new{background:#e9f2ff;color:#0c66e4}.t-gone{background:#ffeceb;color:#c9372c}.t-chg{background:#fff7d6;color:#974f0c}.t-reap{background:#e3fcef;color:#1f845a}
+  .pill{display:inline-flex;gap:6px;align-items:center;background:#f1f2f4;border-radius:16px;padding:3px 10px;font-size:12px}
+  .log{background:#091e42;color:#b3d4ff;border-radius:8px;padding:10px;font:12px ui-monospace,Menlo,monospace;max-height:200px;overflow:auto;white-space:pre-wrap}
+  .log .s{color:#7ee2b8}.log .w{color:#f5cd47}.log .e{color:#ff9c8f}
+  .hide{display:none} .bar{height:5px;background:#ebecf0;border-radius:5px;overflow:hidden;margin:8px 0}
+  .bar>i{display:block;height:100%;background:#0c66e4;width:0;transition:.2s}
+</style></head>
+<body>
+<h3>Cargar export de Power Supply</h3>
+<div class="mut">Subes el CSV/Excel del día → se compara contra las tarjetas → revisas → aplicas.</div>
+
+<div class="grid" id="mapBox">
+  <div><label>Lista de PENDIENTES</label><select id="listPend"></select></div>
+  <div><label>Lista de DESAPARECIDOS</label><select id="listGone"></select></div>
+</div>
+
+<div class="drop" id="drop">📄 Arrastra el CSV/XLSX o haz clic
+  <input type="file" id="file" accept=".csv,.xlsx,.xls" class="hide"></div>
+<div id="fileInfo" class="row hide"></div>
+
+<div id="preview" class="hide">
+  <div class="stats">
+    <div class="stat new"><div class="v" id="cNew">0</div><div class="l">Nuevos</div></div>
+    <div class="stat gone"><div class="v" id="cGone">0</div><div class="l">Desaparecidos</div></div>
+    <div class="stat reap"><div class="v" id="cReap">0</div><div class="l">Reaparecen</div></div>
+    <div class="stat chg"><div class="v" id="cChg">0</div><div class="l">Cambios</div></div>
+    <div class="stat same"><div class="v" id="cSame">0</div><div class="l">Iguales</div></div>
+  </div>
+  <div class="scroll"><table id="tbl"></table></div>
+  <div class="row">
+    <label class="pill"><input type="checkbox" id="optDiscord" style="width:auto"> Avisar a Discord al terminar</label>
+  </div>
+  <div class="row"><button class="ok" id="apply">Aplicar al tablero</button>
+    <button class="ghost" id="reparse">Volver a comparar</button></div>
+</div>
+
+<div id="run" class="hide"><div class="bar"><i id="prog"></i></div><div class="log" id="log"></div></div>
+
+<script>
+var t=TrelloPowerUp.iframe({appKey:PS_CONFIG.APP_KEY,appName:PS_CONFIG.APP_NAME});
+var BOARD=t.getContext().board, KEY=PS_CONFIG.APP_KEY, TOKEN='', SET={}, FILE=null, DIFF=null;
+var Q=Promise.resolve();
+function api(method,path,params){ // escrituras encoladas
+  var u=new URL('https://api.trello.com/1'+path); u.searchParams.set('key',KEY); u.searchParams.set('token',TOKEN);
+  for(var k in params) if(params[k]!=null) u.searchParams.set(k,params[k]);
+  if(method==='GET') return fetch(u).then(r=>r.json());
+  Q=Q.then(()=>new Promise(s=>setTimeout(s,150))).then(()=>fetch(u,{method}).then(r=>{
+    if(!r.ok) return r.text().then(x=>{throw new Error(method+' '+r.status+' '+x.slice(0,80));}); return r.json().catch(()=>({}));}));
+  return Q;
+}
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+(async function init(){
+  TOKEN = await t.getRestApi().getToken().catch(()=> '');
+  if(!TOKEN){ document.body.innerHTML='<p>Falta autorizar. Cierra, pulsa el engranaje del Power-Up → "Conectar con Trello" y vuelve.</p>'; return; }
+  SET = await t.get('board','shared','ps_settings',{}) || {};
+  var lists = await api('GET','/boards/'+BOARD+'/lists',{fields:'name',filter:'open'});
+  function fill(sel,sid){var s=$(sid);s.innerHTML='';lists.forEach(l=>{var o=document.createElement('option');o.value=l.id;o.textContent=l.name;if(l.id===sel)o.selected=true;s.appendChild(o);});}
+  fill(SET.listPend || (lists.find(l=>/pend|falt/i.test(l.name))||{}).id, 'listPend');
+  fill(SET.listGone || (lists.find(l=>/desap|resuel|factur|anul|hist/i.test(l.name))||{}).id, 'listGone');
+  $('optDiscord').checked = !!SET.discord;
+})();
+
+/* archivo */
+$('drop').onclick=()=>$('file').click();
+$('file').onchange=e=>load(e.target.files[0]);
+['dragover','dragenter'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.add('hot');}));
+['dragleave','drop'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.remove('hot');}));
+$('drop').addEventListener('drop',e=>load(e.dataTransfer.files[0]));
+async function load(f){ if(!f) return;
+  try{ FILE=await PS.readFile(f);
+    $('fileInfo').className='row';
+    $('fileInfo').innerHTML='<span class="pill">📄 '+f.name+'</span><span class="pill">'+FILE.rows.length+' líneas</span>';
+    await diff(); $('preview').classList.remove('hide'); t.sizeTo('body');
+  }catch(e){ alert('No pude leer: '+e.message); }
+}
+
+/* diff */
+async function diff(){
+  var P=$('listPend').value, G=$('listGone').value;
+  var cP=await api('GET','/lists/'+P+'/cards',{fields:'name,desc,idList'});
+  var cG=await api('GET','/lists/'+G+'/cards',{fields:'name,desc,idList'});
+  var board={};
+  cP.forEach(c=>{var m=PS.parseMarker(c.desc); if(m) board[m.key]={card:c,snap:m.snap,log:m.log,where:'pend'};});
+  cG.forEach(c=>{var m=PS.parseMarker(c.desc); if(m&&!board[m.key]) board[m.key]={card:c,snap:m.snap,log:m.log,where:'gone'};});
+  var fm={}; FILE.rows.forEach(o=>{var k=PS.keyOf(o); if(k&&k!=='-') fm[k]=o;});
+  var nuevos=[],reap=[],camb=[],ig=[],gone=[];
+  for(var k in fm){var o=fm[k],cur=board[k];
+    if(!cur){nuevos.push({k,o});continue;}
+    var d=PS.snapDiff(cur.snap,PS.snapOf(o));
+    if(cur.where==='gone') reap.push({k,o,cur,diff:d});
+    else if(d.length) camb.push({k,o,cur,diff:d});
+    else ig.push({k});
+  }
+  for(var k2 in board){ if(board[k2].where==='pend'&&!fm[k2]) gone.push({k:k2,cur:board[k2]}); }
+  DIFF={nuevos,gone,reap,camb,ig};
+  $('cNew').textContent=nuevos.length;$('cGone').textContent=gone.length;$('cReap').textContent=reap.length;
+  $('cChg').textContent=camb.length;$('cSame').textContent=ig.length;
+  var rows=['<tr><th>Tipo</th><th>Ref</th><th>SAP-Puesto</th><th>Detalle</th></tr>'];
+  nuevos.forEach(x=>rows.push(tr('t-new','NUEVO',PS.cardName(x.o),x.k,esc(PS.col(x.o,'Estado'))+' · '+esc(PS.col(x.o,'Fecha de entrega')))));
+  reap.forEach(x=>rows.push(tr('t-reap','REAPARECE',x.cur.card.name,x.k,'Vuelve a Pendientes')));
+  camb.forEach(x=>rows.push(tr('t-chg','CAMBIO',x.cur.card.name,x.k,x.diff.map(d=>'<b>'+d.campo+':</b> '+esc(d.de)+' → '+esc(d.a)).join('<br>'))));
+  gone.forEach(x=>rows.push(tr('t-gone','DESAPARECE',x.cur.card.name,x.k,'Facturado/anulado')));
+  $('tbl').innerHTML=rows.join('')|| '<tr><td>Sin diferencias</td></tr>';
+}
+function tr(c,tg,n,k,d){return '<tr><td><span class="tag '+c+'">'+tg+'</span></td><td>'+esc(n)+'</td><td>'+esc(k)+'</td><td>'+d+'</td></tr>';}
+$('reparse').onclick=diff;
+
+/* aplicar */
+$('apply').onclick=async function(){
+  $('run').classList.remove('hide'); $('log').innerHTML=''; t.sizeTo('body');
+  var total=DIFF.nuevos.length+DIFF.gone.length+DIFF.reap.length+DIFF.camb.length, done=0, T=PS.today();
+  var tick=()=>{done++;$('prog').style.width=Math.round(done/Math.max(total,1)*100)+'%';};
+  var P=$('listPend').value, G=$('listGone').value;
+  // guarda mapping + discord
+  SET.listPend=P; SET.listGone=G; SET.discord=$('optDiscord').checked?SET.discord:SET.discord;
+  await t.set('board','shared','ps_settings',SET);
+  try{
+    for(const x of DIFF.nuevos){
+      var snap=PS.snapOf(x.o), p={idList:P,name:PS.cardName(x.o),desc:PS.buildDesc(x.o,x.k,snap,null,[]),pos:'top'};
+      var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); if(due)p.due=due;
+      await api('POST','/cards',p); log('s','＋ '+x.k+'  '+PS.cardName(x.o)); tick();
+    }
+    for(const x of DIFF.reap){
+      var snap=PS.snapOf(x.o), log0=(x.cur.log||[]).concat([{d:T,c:[{campo:'Reaparece',de:'Desaparecidos',a:'Pendientes'}]}]);
+      var p={idList:P,desc:PS.buildDesc(x.o,x.k,snap,T,log0)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); if(due)p.due=due;
+      await api('PUT','/cards/'+x.cur.card.id,p);
+      await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'↩ Reaparece ('+T+'). Devuelta a Pendientes.'});
+      log('s','↩ '+x.k); tick();
+    }
+    for(const x of DIFF.camb){
+      var snap=PS.snapOf(x.o), log0=(x.cur.log||[]).concat([{d:T,c:x.diff}]);
+      var p={desc:PS.buildDesc(x.o,x.k,snap,T,log0)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); p.due=due||null;
+      await api('PUT','/cards/'+x.cur.card.id,p);
+      await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'🔔 Cambios ('+T+'):\n'+x.diff.map(d=>'• '+d.campo+': '+d.de+' → '+d.a).join('\n')});
+      log('w','✎ '+x.k+' ('+x.diff.map(d=>d.campo).join(', ')+')'); tick();
+    }
+    for(const x of DIFF.gone){
+      await api('PUT','/cards/'+x.cur.card.id,{idList:G});
+      await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'❌ Desapareció del listado el '+T+' (posible facturación o anulación).'});
+      log('e','✗ '+x.k+'  '+x.cur.card.name); tick();
+    }
+    $('prog').style.width='100%';
+    await t.set('board','shared','ps_last',{cambios:DIFF.camb.length,gone:DIFF.gone.length,nuevos:DIFF.nuevos.length,fecha:T});
+    log('s','Hecho: '+DIFF.nuevos.length+' nuevos · '+DIFF.gone.length+' desaparecidos · '+DIFF.reap.length+' reaparecen · '+DIFF.camb.length+' cambios.');
+    if($('optDiscord').checked && SET.discord) await discord(T);
+    setTimeout(()=>t.closeModal(), 1800);
+  }catch(e){ log('e','ERROR: '+e.message); }
+};
+async function discord(T){
+  var lines=['**📦 Power Supply — '+T+'**',
+    '• Nuevos: '+DIFF.nuevos.length+'  • Desaparecidos: '+DIFF.gone.length+'  • Cambios: '+DIFF.camb.length];
+  DIFF.gone.slice(0,10).forEach(x=>lines.push('❌ '+x.cur.card.name));
+  DIFF.camb.slice(0,10).forEach(x=>lines.push('🔔 '+x.cur.card.name+' ('+x.diff.map(d=>d.campo).join(', ')+')'));
+  try{ await fetch(SET.discord,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:lines.join('\n').slice(0,1900)})});
+    log('s','Aviso enviado a Discord.'); }
+  catch(e){ log('w','No pude avisar a Discord (CORS o URL). Detalle: '+e.message); }
+}
+function log(c,m){var s=document.createElement('span');s.className=c;s.textContent=m+'\n';$('log').appendChild(s);$('log').scrollTop=9e9;}
+</script>
+</body></html>

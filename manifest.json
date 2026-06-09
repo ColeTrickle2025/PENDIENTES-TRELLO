@@ -1,0 +1,18 @@
+{
+  "name": "Power Supply Sync",
+  "details": "Carga el export de piezas faltantes de Power Supply, sincroniza tarjetas (altas, bajas, cambios) y muestra estado, ETA e historial en cada tarjeta.",
+  "author": "Ezequiel",
+  "capabilities": [
+    "board-buttons",
+    "card-badges",
+    "card-detail-badges",
+    "card-back-section",
+    "card-buttons",
+    "show-settings",
+    "authorization-status",
+    "show-authorization"
+  ],
+  "connectors": {
+    "iframe": { "url": "https://TU-USUARIO.github.io/TU-REPO/index.html" }
+  }
+}
