@@ -78,7 +78,17 @@ function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>
 
 (async function init(){
   TOKEN = await t.getRestApi().getToken().catch(()=> '');
-  if(!TOKEN){ document.body.innerHTML='<p>Falta autorizar. Cierra, pulsa el engranaje del Power-Up → "Conectar con Trello" y vuelve.</p>'; return; }
+  if(!TOKEN){
+    document.body.innerHTML='<h3>Conectar con Trello</h3>'+
+      '<p class="mut">Autoriza el Power-Up una vez para poder crear y mover tarjetas.</p>'+
+      '<button id="auth">Autorizar con Trello</button>';
+    document.getElementById('auth').onclick=function(){
+      t.getRestApi().authorize({scope:'read,write',expiration:'never'})
+        .then(function(){ location.reload(); })
+        .catch(function(e){ alert('No se pudo autorizar: '+(e&&e.message||e)); });
+    };
+    return;
+  }
   SET = await t.get('board','shared','ps_settings',{}) || {};
   var lists = await api('GET','/boards/'+BOARD+'/lists',{fields:'name',filter:'open'});
   function fill(sel,sid){var s=$(sid);s.innerHTML='';lists.forEach(l=>{var o=document.createElement('option');o.value=l.id;o.textContent=l.name;if(l.id===sel)o.selected=true;s.appendChild(o);});}
