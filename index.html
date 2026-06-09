@@ -22,6 +22,7 @@ function badgesFor(t){
                color: PS.estadoColor(m.snap) });
     if(m.snap.ent) out.push({ text:'📦 '+PS.etaShort(m.snap), color:'light-gray' });
     if(m.snap.prio) out.push({ text:'P'+m.snap.prio, color: (m.snap.prio<=2?'red':'sky') });
+    if(m.snap.ot) out.push({ text:'📋 OT '+m.snap.ot, color:'light-gray' });
     if(m.flag){
       const days = Math.floor((Date.now()-Date.parse(m.flag))/86400000);
       if(days <= (window.PS_CONFIG.ALERT_DAYS||1)) out.push({text:'🔔 cambió', color:'yellow'});
@@ -38,7 +39,7 @@ TrelloPowerUp.initialize({
       var extra = (last && last.cambios!=null) ? '  ('+last.cambios+'✎ '+last.gone+'✗)' : '';
       return [{
         icon:{dark:ICON_DARK, light:ICON_DARK},
-        text:'Power Supply'+extra,
+        text:'Importar Power Supply'+extra,
         callback:function(t){
           return t.modal({ url:'import.html', title:'Cargar export de Power Supply',
                            fullscreen:true, height:600 });
