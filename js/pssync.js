@@ -70,12 +70,41 @@ const ALIASES={
 };
 function col(o,name){ for(const a of (ALIASES[name]||[name])) if(a in o && o[a]!=='') return o[a]; return ''; }
 
+/* ---------- traducción a castellano (normaliza EN/FR del export) ---------- */
+var DICT={
+  'en cours de preparation par psa':'En preparación por Stellantis',
+  'being prepared by stellantis':'En preparación por Stellantis',
+  'to be cancelled in the dms':'Anular en el DMS',
+  'a annuler dans le dms':'Anular en el DMS',
+  'not available (shortage)':'No disponible (penuria)',
+  'unavailable (shortage)':'No disponible (penuria)',
+  'initial part maintained':'Pieza inicial mantenida',
+  'initial part retained':'Pieza inicial mantenida',
+  'pending treatment':'Pendiente de tratar',
+  'to be processed':'Pendiente de tratar',
+  'no reliable forecast':'Sin previsión fiable',
+  'incalculable delay':'Plazo incalculable',
+  'en cours de réception':'En recepción',
+  'en cours de reception':'En recepción',
+  'non déterminé':'Sin determinar',
+  'non determine':'Sin determinar',
+  'not determined':'Sin determinar',
+  'no forecast':'Sin previsión',
+  'a traiter':'Pendiente de tratar',
+  'in receipt':'En recepción'
+};
+function es(s){
+  if(!s) return s; var x=String(s);
+  for(var k in DICT){ x=x.replace(new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'ig'), DICT[k]); }
+  return x;
+}
+
 /* ---------- modelo ---------- */
 function keyOf(o){ return (col(o,'Pedido SAP')+'-'+col(o,'Puesto')).trim(); }
-function snapOf(o){ return {est:col(o,'Estado'),ent:col(o,'Fecha de entrega'),cant:col(o,'Cantidad'),prio:col(o,'Prioridad'),alt:col(o,'Alt. PNR'),ot:col(o,'OT')}; }
+function snapOf(o){ return {est:es(col(o,'Estado')),ent:es(col(o,'Fecha de entrega')),cant:col(o,'Cantidad'),prio:col(o,'Prioridad'),alt:col(o,'Alt. PNR'),ot:col(o,'OT')}; }
 function snapDiff(a,b){
   const lab={est:'Estado',ent:'ETA/Entrega',cant:'Cantidad',prio:'Prioridad',alt:'Alternativa'};
-  const out=[]; for(const k in lab){const x=(a&&a[k])||'',y=(b&&b[k])||''; if(x!==y) out.push({campo:lab[k],de:x||'∅',a:y||'∅'});}
+  const out=[]; for(const k in lab){const x=es((a&&a[k])||''),y=es((b&&b[k])||''); if(x!==y) out.push({campo:lab[k],de:x||'∅',a:y||'∅'});}
   return out;
 }
 function cardName(o){
@@ -83,6 +112,21 @@ function cardName(o){
   return (r+' · '+d+(c&&c!=='1'?' ×'+c:'')).slice(0,250);
 }
 function isVI(o){ return !!col(o,'VIN'); }
+
+/* ---------- detección de marca: 1º por cuenta cliente, 2º por modelo ---------- */
+function detectBrand(rows){
+  var acc=(typeof window!=='undefined' && window.PS_CONFIG && window.PS_CONFIG.ACCOUNTS) || {};
+  for(var i=0;i<rows.length;i++){
+    var c=String(col(rows[i],'Cuenta cliente')||'').split('-')[0].trim();
+    if(acc[c]) return acc[c];
+  }
+  var rx=[['Opel',/\bOPEL\b/i],['Peugeot',/\bPEUGEOT\b/i],['Citroën',/\bCITRO/i],['DS',/\bDS\b/i],['Fiat',/\bFIAT\b/i]];
+  for(var k=0;k<rows.length;k++){
+    var m=(col(rows[k],'Model')||'')+' '+(rows[k]['Model & Chassis']||'');
+    for(var j=0;j<rx.length;j++) if(rx[j][1].test(m)) return rx[j][0];
+  }
+  return '';
+}
 
 /* ---------- marcador en descripción ----------
    Bloque al final de la desc:
@@ -93,19 +137,22 @@ function isVI(o){ return !!col(o,'VIN'); }
      PSLOG=[{d,c:[{campo,de,a}]}] (historial, máx 20)
 */
 const SEP='─── no editar (Power Supply) ───';
-function buildDesc(o,key,snap,flag,log){
+function buildDesc(o,key,snap,flag,log,brand){
   const L=k=>col(o,k);
   const vor=L('VIN')?`\n**VI/VOR:** ${L('VIN')} — ${L('Model')||''}\n> ${L('Reason For VOR - Explanation')||''} (${L('Reason For VOR - Category')||''})`:'';
   const human=
-`**Referencia:** ${L('Referencia')}  ·  **Cant.:** ${L('Cantidad')}
+`**Marca:** ${brand||'—'}
+**Referencia:** ${L('Referencia')}  ·  **Cant.:** ${L('Cantidad')}
 **Designación:** ${L('Designacion')}
-**Estado:** ${L('Estado')}
-**Entrega / ETA:** ${L('Fecha de entrega')}  ${L('Fiabilidad')?'· '+L('Fiabilidad'):''}
+**Estado:** ${es(L('Estado'))}
+**Entrega / ETA:** ${es(L('Fecha de entrega'))}  ${L('Fiabilidad')?'· '+L('Fiabilidad'):''}
 **Prioridad:** ${L('Prioridad')||'—'}  ·  **Tipo:** ${L('Tipo de pieza')||'—'}
 **Pedido SAP:** ${L('Pedido SAP')} / Puesto ${L('Puesto')}  ·  **Aviso:** ${L('Aviso')||'—'}
 **OT:** ${L('OT')||'—'}  ·  **Nº pedido:** ${L('Numero de pedido')||'—'}  ·  **Fecha pedido:** ${L('Fecha de pedido')||'—'}
 ${L('Alt. PNR')?'**Alternativa propuesta:** '+L('Alt. PNR'):''}${vor}`;
-  let block='\n\n'+SEP+'\nPSKEY='+key+'\nPSSNAP='+JSON.stringify(snap);
+  let block='\n\n'+SEP+'\nPSKEY='+key;
+  if(brand) block+='\nPSBRAND='+brand;
+  block+='\nPSSNAP='+JSON.stringify(snap);
   if(flag) block+='\nPSFLAG='+flag;
   if(log && log.length) block+='\nPSLOG='+JSON.stringify(log.slice(-20));
   return (human+block).slice(0,16000);
@@ -113,11 +160,12 @@ ${L('Alt. PNR')?'**Alternativa propuesta:** '+L('Alt. PNR'):''}${vor}`;
 function parseMarker(desc){
   desc=desc||'';
   const mk=desc.match(/PSKEY=([^\n]+)/); if(!mk) return null;
+  const mbr=desc.match(/PSBRAND=([^\n]+)/);
   const ms=desc.match(/PSSNAP=(\{[\s\S]*?\})\s*(?:\n|$)/);
   const mf=desc.match(/PSFLAG=([0-9-]+)/);
   const ml=desc.match(/PSLOG=(\[[\s\S]*?\])\s*$/);
   let snap=null,log=[]; try{snap=ms?JSON.parse(ms[1]):null;}catch(e){} try{log=ml?JSON.parse(ml[1]):[];}catch(e){}
-  return {key:mk[1].trim(), snap, flag:mf?mf[1]:null, log};
+  return {key:mk[1].trim(), brand:mbr?mbr[1].trim():'', snap, flag:mf?mf[1]:null, log};
 }
 
 /* ---------- fechas ---------- */
@@ -130,12 +178,12 @@ function today(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMon
 
 /* ---------- color de estado para badges ---------- */
 function estadoColor(snap){
-  const e=((snap&&snap.est)||'').toLowerCase(), t=((snap&&snap.ent)||'').toLowerCase();
-  if(/annuler|anular/.test(e)) return 'red';
+  const e=es((snap&&snap.est)||'').toLowerCase(), t=es((snap&&snap.ent)||'').toLowerCase();
+  if(/anular/.test(e)) return 'red';
   if(/penuria|no disponible/.test(t)) return 'red';
-  if(/incalculable|no reliable|no determin|ninguna previs/.test(t)) return 'orange';
+  if(/incalculable|sin previs|sin determin|ninguna previs|no determin/.test(t)) return 'orange';
   if(/prepar/.test(e)) return 'green';
-  if(/con clave|clé/.test(t)) return 'purple';
+  if(/con clave|clave/.test(t)) return 'purple';
   return 'blue';
 }
 function etaShort(snap){
@@ -145,5 +193,5 @@ function etaShort(snap){
   return t.replace(/Distribucion controlada.*/i,'Campaña seg.').slice(0,22);
 }
 
-window.PS={readFile,col,keyOf,snapOf,snapDiff,cardName,isVI,buildDesc,parseMarker,parseDue,today,estadoColor,etaShort,SEP};
+window.PS={readFile,col,keyOf,snapOf,snapDiff,cardName,isVI,detectBrand,buildDesc,parseMarker,parseDue,today,estadoColor,etaShort,es,SEP};
 })();
