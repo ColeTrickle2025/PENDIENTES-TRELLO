@@ -22,6 +22,17 @@ var t=TrelloPowerUp.iframe({appKey:PS_CONFIG.APP_KEY,appName:PS_CONFIG.APP_NAME}
 var KEY=PS_CONFIG.APP_KEY, TOKEN='';
 (async function(){
   TOKEN=await t.getRestApi().getToken().catch(()=> '');
+  if(!TOKEN){
+    var b=document.createElement('button');
+    b.textContent='🔗 Conectar con Trello';
+    b.style.cssText='background:#0c66e4;width:100%;margin-bottom:12px';
+    b.onclick=function(){
+      t.getRestApi().authorize({scope:'read,write',expiration:'never'})
+        .then(function(){ location.reload(); })
+        .catch(function(e){ alert('No se pudo autorizar: '+(e&&e.message||e)); });
+    };
+    document.body.insertBefore(b, document.body.firstChild);
+  }
   var s=await t.get('board','shared','ps_settings',{})||{};
   var B=t.getContext().board, lists=[];
   if(TOKEN){ lists=await fetch('https://api.trello.com/1/boards/'+B+'/lists?fields=name&filter=open&key='+KEY+'&token='+TOKEN).then(r=>r.json()); }
