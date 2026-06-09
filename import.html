@@ -107,19 +107,20 @@ async function diff(){
   var cP=await api('GET','/lists/'+P+'/cards',{fields:'name,desc,idList'});
   var cG=await api('GET','/lists/'+G+'/cards',{fields:'name,desc,idList'});
   var board={};
-  cP.forEach(c=>{var m=PS.parseMarker(c.desc); if(m) board[m.key]={card:c,snap:m.snap,log:m.log,where:'pend'};});
-  cG.forEach(c=>{var m=PS.parseMarker(c.desc); if(m&&!board[m.key]) board[m.key]={card:c,snap:m.snap,log:m.log,where:'gone'};});
+  cP.forEach(c=>{var m=PS.parseMarker(c.desc); if(m) board[m.key]={card:c,snap:m.snap,log:m.log,flag:m.flag,where:'pend'};});
+  cG.forEach(c=>{var m=PS.parseMarker(c.desc); if(m&&!board[m.key]) board[m.key]={card:c,snap:m.snap,log:m.log,flag:m.flag,where:'gone'};});
   var fm={}; FILE.rows.forEach(o=>{var k=PS.keyOf(o); if(k&&k!=='-') fm[k]=o;});
-  var nuevos=[],reap=[],camb=[],ig=[],gone=[];
+  var nuevos=[],reap=[],camb=[],ig=[],gone=[],refresh=[];
   for(var k in fm){var o=fm[k],cur=board[k];
     if(!cur){nuevos.push({k,o});continue;}
     var d=PS.snapDiff(cur.snap,PS.snapOf(o));
     if(cur.where==='gone') reap.push({k,o,cur,diff:d});
     else if(d.length) camb.push({k,o,cur,diff:d});
+    else if((!cur.snap || cur.snap.ot===undefined) && PS.col(o,'OT')) refresh.push({k,o,cur}); // backfill OT
     else ig.push({k});
   }
   for(var k2 in board){ if(board[k2].where==='pend'&&!fm[k2]) gone.push({k:k2,cur:board[k2]}); }
-  DIFF={nuevos,gone,reap,camb,ig};
+  DIFF={nuevos,gone,reap,camb,ig,refresh};
   $('cNew').textContent=nuevos.length;$('cGone').textContent=gone.length;$('cReap').textContent=reap.length;
   $('cChg').textContent=camb.length;$('cSame').textContent=ig.length;
   var rows=['<tr><th>Tipo</th><th>Ref</th><th>SAP-Puesto</th><th>Detalle</th></tr>'];
@@ -166,6 +167,12 @@ $('apply').onclick=async function(){
       await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'❌ Desapareció del listado el '+T+' (posible facturación o anulación).'});
       log('e','✗ '+x.k+'  '+x.cur.card.name); tick();
     }
+    // refresco silencioso: añade la OT a tarjetas antiguas sin marcarlas como cambio
+    for(const x of (DIFF.refresh||[])){
+      var snap=PS.snapOf(x.o);
+      await api('PUT','/cards/'+x.cur.card.id,{desc:PS.buildDesc(x.o,x.k,snap,x.cur.flag,x.cur.log||[])});
+    }
+    if(DIFF.refresh && DIFF.refresh.length) log('s','↻ '+DIFF.refresh.length+' tarjetas: OT añadida.');
     $('prog').style.width='100%';
     await t.set('board','shared','ps_last',{cambios:DIFF.camb.length,gone:DIFF.gone.length,nuevos:DIFF.nuevos.length,fecha:T});
     log('s','Hecho: '+DIFF.nuevos.length+' nuevos · '+DIFF.gone.length+' desaparecidos · '+DIFF.reap.length+' reaparecen · '+DIFF.camb.length+' cambios.');
