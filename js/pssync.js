@@ -59,6 +59,7 @@ const ALIASES={
   'Prioridad':['Prioridad','Priority','Priorité'],
   'Aviso':['Aviso','Reclamacion','Reclamación','Ticket'],
   'Numero de pedido':['Numero de pedido','Número de pedido','Pedido local'],
+  'OT':['Workshop Repare Order Number','Workshop Repair Order Number','Numero de Orden de Reparación','Orden de reparación','Repair Order'],
   'Fecha de pedido':['Fecha de pedido','Date','Fecha'],
   'VIN':['VIN'],'Model':['Model','Modelo'],
   'Tipo de pieza':['Tipo de pieza','Tipo de PR'],
@@ -71,7 +72,7 @@ function col(o,name){ for(const a of (ALIASES[name]||[name])) if(a in o && o[a]!
 
 /* ---------- modelo ---------- */
 function keyOf(o){ return (col(o,'Pedido SAP')+'-'+col(o,'Puesto')).trim(); }
-function snapOf(o){ return {est:col(o,'Estado'),ent:col(o,'Fecha de entrega'),cant:col(o,'Cantidad'),prio:col(o,'Prioridad'),alt:col(o,'Alt. PNR')}; }
+function snapOf(o){ return {est:col(o,'Estado'),ent:col(o,'Fecha de entrega'),cant:col(o,'Cantidad'),prio:col(o,'Prioridad'),alt:col(o,'Alt. PNR'),ot:col(o,'OT')}; }
 function snapDiff(a,b){
   const lab={est:'Estado',ent:'ETA/Entrega',cant:'Cantidad',prio:'Prioridad',alt:'Alternativa'};
   const out=[]; for(const k in lab){const x=(a&&a[k])||'',y=(b&&b[k])||''; if(x!==y) out.push({campo:lab[k],de:x||'∅',a:y||'∅'});}
@@ -102,7 +103,7 @@ function buildDesc(o,key,snap,flag,log){
 **Entrega / ETA:** ${L('Fecha de entrega')}  ${L('Fiabilidad')?'· '+L('Fiabilidad'):''}
 **Prioridad:** ${L('Prioridad')||'—'}  ·  **Tipo:** ${L('Tipo de pieza')||'—'}
 **Pedido SAP:** ${L('Pedido SAP')} / Puesto ${L('Puesto')}  ·  **Aviso:** ${L('Aviso')||'—'}
-**Nº pedido:** ${L('Numero de pedido')||'—'}  ·  **Fecha pedido:** ${L('Fecha de pedido')||'—'}
+**OT:** ${L('OT')||'—'}  ·  **Nº pedido:** ${L('Numero de pedido')||'—'}  ·  **Fecha pedido:** ${L('Fecha de pedido')||'—'}
 ${L('Alt. PNR')?'**Alternativa propuesta:** '+L('Alt. PNR'):''}${vor}`;
   let block='\n\n'+SEP+'\nPSKEY='+key+'\nPSSNAP='+JSON.stringify(snap);
   if(flag) block+='\nPSFLAG='+flag;
