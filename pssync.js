@@ -113,11 +113,16 @@ function cardName(o){
 }
 function isVI(o){ return !!col(o,'VIN'); }
 
-/* ---------- detección de marca a partir del modelo ---------- */
+/* ---------- detección de marca: 1º por cuenta cliente, 2º por modelo ---------- */
 function detectBrand(rows){
-  var rx=[['Opel',/\bOPEL\b/i],['Peugeot',/\bPEUGEOT\b/i],['Citroën',/\bCITRO/i],['DS',/\bDS\b/i],['Fiat',/\bFIAT\b/i]];
+  var acc=(typeof window!=='undefined' && window.PS_CONFIG && window.PS_CONFIG.ACCOUNTS) || {};
   for(var i=0;i<rows.length;i++){
-    var m=(col(rows[i],'Model')||'')+' '+(rows[i]['Model & Chassis']||'');
+    var c=String(col(rows[i],'Cuenta cliente')||'').split('-')[0].trim();
+    if(acc[c]) return acc[c];
+  }
+  var rx=[['Opel',/\bOPEL\b/i],['Peugeot',/\bPEUGEOT\b/i],['Citroën',/\bCITRO/i],['DS',/\bDS\b/i],['Fiat',/\bFIAT\b/i]];
+  for(var k=0;k<rows.length;k++){
+    var m=(col(rows[k],'Model')||'')+' '+(rows[k]['Model & Chassis']||'');
     for(var j=0;j<rx.length;j++) if(rx[j][1].test(m)) return rx[j][0];
   }
   return '';
