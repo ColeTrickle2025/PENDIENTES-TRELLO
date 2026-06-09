@@ -9,6 +9,7 @@
   button{background:#0c66e4;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer;margin-top:14px}
   .mut{color:#5e6c84;font-size:12px}
 </style></head><body>
+<button id="importNow" style="background:#1f845a;width:100%;margin-bottom:12px">📥 Importar export ahora</button>
 <label>Lista de PENDIENTES</label><select id="listPend"></select>
 <label>Lista de DESAPARECIDOS / RESUELTOS</label><select id="listGone"></select>
 <label>Webhook de Discord para alertas <span class="mut">(opcional)</span></label>
@@ -29,6 +30,9 @@ var KEY=PS_CONFIG.APP_KEY, TOKEN='';
   document.getElementById('discord').value=s.discord||'';
   document.getElementById('days').value=(s.alertDays!=null?s.alertDays:1);
 })();
+document.getElementById('importNow').onclick=function(){
+  t.modal({url:'import.html',title:'Cargar export de Power Supply',fullscreen:true,height:600});
+};
 document.getElementById('save').onclick=async function(){
   var s={listPend:document.getElementById('listPend').value,listGone:document.getElementById('listGone').value,
     discord:document.getElementById('discord').value.trim(),alertDays:+document.getElementById('days').value};
