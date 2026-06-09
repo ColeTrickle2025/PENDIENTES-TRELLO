@@ -16,9 +16,11 @@ function badgesFor(t){
     const m = PS.parseMarker(card.desc);
     if(!m || !m.snap) return [];
     const out=[];
-    out.push({ text: m.snap.est ? m.snap.est.replace('Pieza inicial mantenida','Inicial mant.')
-                                          .replace('En cours de preparation par PSA','Prep. PSA')
-                                          .slice(0,18) : '—',
+    out.push({ text: m.snap.est ? PS.es(m.snap.est)
+                                    .replace('Pieza inicial mantenida','Inicial mant.')
+                                    .replace('En preparación por Stellantis','Prep. Stellantis')
+                                    .replace('Pendiente de tratar','Pendiente')
+                                    .slice(0,20) : '—',
                color: PS.estadoColor(m.snap) });
     if(m.snap.ent) out.push({ text:'📦 '+PS.etaShort(m.snap), color:'light-gray' });
     if(m.snap.prio) out.push({ text:'P'+m.snap.prio, color: (m.snap.prio<=2?'red':'sky') });
