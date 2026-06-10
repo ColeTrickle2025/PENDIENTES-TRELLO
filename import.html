@@ -3,52 +3,48 @@
 <title>Cargar export</title>
 <script src="https://p.trellocdn.com/power-up.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="js/config.js"></script>
-<script src="js/pssync.js"></script>
+<script src="js/config.js?v=4"></script>
+<script src="js/pssync.js?v=4"></script>
 <style>
   body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#172b4d;margin:0;padding:18px;background:#fff}
   h3{margin:0 0 4px} .mut{color:#5e6c84;font-size:13px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
   label{font-size:12px;color:#5e6c84;font-weight:600;display:block;margin-bottom:3px}
-  select,input{width:100%;padding:8px;border:1px solid #dfe1e6;border-radius:6px;font-size:14px}
+  select{width:100%;padding:8px;border:1px solid #dfe1e6;border-radius:6px;font-size:14px}
   .drop{border:2px dashed #c1c7d0;border-radius:10px;padding:24px;text-align:center;color:#5e6c84;cursor:pointer;margin-top:8px}
   .drop.hot{border-color:#0c66e4;background:#e9f2ff}
   button{background:#0c66e4;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer}
-  button.ok{background:#1f845a} button.ghost{background:#f1f2f4;color:#172b4d} button:disabled{opacity:.4;cursor:not-allowed}
+  button.ok{background:#1f845a} button.ghost{background:#f1f2f4;color:#172b4d}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
   .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:12px 0}
   .stat{background:#f4f5f7;border-radius:8px;padding:10px;text-align:center}
   .stat .v{font-size:22px;font-weight:800} .stat .l{font-size:10px;color:#5e6c84;text-transform:uppercase}
-  .new .v{color:#0c66e4}.gone .v{color:#c9372c}.chg .v{color:#974f0c}.reap .v{color:#1f845a}.same .v{color:#5e6c84}
+  .new .v{color:#0c66e4}.gone .v{color:#c9372c}.chg .v{color:#974f0c}.reap .v{color:#1f845a}.mov .v{color:#5e6c84}
   table{width:100%;border-collapse:collapse;font-size:12.5px} th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #ebecf0;vertical-align:top}
   th{color:#5e6c84;font-size:10px;text-transform:uppercase} .scroll{max-height:240px;overflow:auto;border:1px solid #ebecf0;border-radius:8px}
   .tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px}
-  .t-new{background:#e9f2ff;color:#0c66e4}.t-gone{background:#ffeceb;color:#c9372c}.t-chg{background:#fff7d6;color:#974f0c}.t-reap{background:#e3fcef;color:#1f845a}
+  .t-new{background:#e9f2ff;color:#0c66e4}.t-gone{background:#ffeceb;color:#c9372c}.t-chg{background:#fff7d6;color:#974f0c}.t-reap{background:#e3fcef;color:#1f845a}.t-mov{background:#eef0f3;color:#42526e}
   .pill{display:inline-flex;gap:6px;align-items:center;background:#f1f2f4;border-radius:16px;padding:3px 10px;font-size:12px}
   .log{background:#091e42;color:#b3d4ff;border-radius:8px;padding:10px;font:12px ui-monospace,Menlo,monospace;max-height:200px;overflow:auto;white-space:pre-wrap}
   .log .s{color:#7ee2b8}.log .w{color:#f5cd47}.log .e{color:#ff9c8f}
   .hide{display:none} .bar{height:5px;background:#ebecf0;border-radius:5px;overflow:hidden;margin:8px 0}
   .bar>i{display:block;height:100%;background:#0c66e4;width:0;transition:.2s}
+  .warn{background:#fff7d6;border:1px solid #f5cd47;border-radius:8px;padding:10px;color:#7a5b00}
 </style></head>
 <body>
 <h3>Cargar export de Power Supply</h3>
-<div class="mut">Subes el CSV/Excel del día → se compara contra las tarjetas → revisas → aplicas.</div>
+<div class="mut">Subes el CSV/Excel del día → cada pieza se mueve a su columna según el estado.</div>
+
+<div id="needSetup" class="warn hide" style="margin-top:12px">
+  Aún no has configurado las columnas. Abre <b>Ajustes</b> → <b>Crear las columnas automáticamente</b> → Guardar, y vuelve aquí.
+</div>
 
 <div style="margin:12px 0">
   <label>Marca de este archivo</label>
   <select id="brand">
-    <option value="Opel">Opel</option>
-    <option value="Citroën">Citroën</option>
-    <option value="Peugeot">Peugeot</option>
-    <option value="Fiat">Fiat</option>
-    <option value="DS">DS</option>
+    <option value="Opel">Opel</option><option value="Citroën">Citroën</option>
+    <option value="Peugeot">Peugeot</option><option value="Fiat">Fiat</option><option value="DS">DS</option>
   </select>
   <div class="mut" id="brandHint" style="margin-top:4px"></div>
-</div>
-
-<div class="grid" id="mapBox">
-  <div><label>Lista de PENDIENTES</label><select id="listPend"></select></div>
-  <div><label>Lista de DESAPARECIDOS</label><select id="listGone"></select></div>
 </div>
 
 <div class="drop" id="drop">📄 Arrastra el CSV/XLSX o haz clic
@@ -61,7 +57,7 @@
     <div class="stat gone"><div class="v" id="cGone">0</div><div class="l">Desaparecidos</div></div>
     <div class="stat reap"><div class="v" id="cReap">0</div><div class="l">Reaparecen</div></div>
     <div class="stat chg"><div class="v" id="cChg">0</div><div class="l">Cambios</div></div>
-    <div class="stat same"><div class="v" id="cSame">0</div><div class="l">Iguales</div></div>
+    <div class="stat mov"><div class="v" id="cMov">0</div><div class="l">Cambian col.</div></div>
   </div>
   <div class="scroll"><table id="tbl"></table></div>
   <div class="row"><button class="ok" id="apply">Aplicar al tablero</button>
@@ -72,9 +68,9 @@
 
 <script>
 var t=TrelloPowerUp.iframe({appKey:PS_CONFIG.APP_KEY,appName:PS_CONFIG.APP_NAME});
-var BOARD=t.getContext().board, KEY=PS_CONFIG.APP_KEY, TOKEN='', SET={}, FILE=null, DIFF=null;
+var BOARD=t.getContext().board, KEY=PS_CONFIG.APP_KEY, TOKEN='', SET={}, FILE=null, DIFF=null, LABELS={};
 var Q=Promise.resolve();
-function api(method,path,params){ // escrituras encoladas
+function api(method,path,params){
   var u=new URL('https://api.trello.com/1'+path); u.searchParams.set('key',KEY); u.searchParams.set('token',TOKEN);
   for(var k in params) if(params[k]!=null) u.searchParams.set(k,params[k]);
   if(method==='GET') return fetch(u).then(r=>r.json());
@@ -86,79 +82,66 @@ function $(id){return document.getElementById(id);}
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 
 (async function init(){
-  TOKEN = await t.getRestApi().getToken().catch(()=> '');
+  TOKEN=await t.getRestApi().getToken().catch(()=> '');
   if(!TOKEN){
-    document.body.innerHTML='<h3>Conectar con Trello</h3>'+
-      '<p class="mut">Autoriza el Power-Up una vez para poder crear y mover tarjetas.</p>'+
-      '<button id="auth">Autorizar con Trello</button>';
-    document.getElementById('auth').onclick=function(){
-      t.getRestApi().authorize({scope:'read,write',expiration:'never'})
-        .then(function(){ location.reload(); })
-        .catch(function(e){ alert('No se pudo autorizar: '+(e&&e.message||e)); });
-    };
+    document.body.innerHTML='<h3>Conectar con Trello</h3><p class="mut">Autoriza una vez para crear y mover tarjetas.</p><button id="auth">Autorizar con Trello</button>';
+    $('auth').onclick=function(){ t.getRestApi().authorize({scope:'read,write',expiration:'never'}).then(()=>location.reload()).catch(e=>alert('No se pudo autorizar: '+(e&&e.message||e))); };
     return;
   }
-  SET = await t.get('board','shared','ps_settings',{}) || {};
-  var lists = await api('GET','/boards/'+BOARD+'/lists',{fields:'name',filter:'open'});
-  function fill(sel,sid){var s=$(sid);s.innerHTML='';lists.forEach(l=>{var o=document.createElement('option');o.value=l.id;o.textContent=l.name;if(l.id===sel)o.selected=true;s.appendChild(o);});}
-  fill(SET.listPend || (lists.find(l=>/pend|falt/i.test(l.name))||{}).id, 'listPend');
-  fill(SET.listGone || (lists.find(l=>/desap|resuel|factur|anul|hist/i.test(l.name))||{}).id, 'listGone');
+  SET=await t.get('board','shared','ps_settings',{})||{};
+  if(!SET.buckets || !SET.buckets.prep || !SET.buckets.gone){ $('needSetup').classList.remove('hide'); }
 })();
 
-/* archivo */
 $('drop').onclick=()=>$('file').click();
 $('file').onchange=e=>load(e.target.files[0]);
 ['dragover','dragenter'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.add('hot');}));
 ['dragleave','drop'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.remove('hot');}));
 $('drop').addEventListener('drop',e=>load(e.dataTransfer.files[0]));
+$('brand').onchange=function(){ if(FILE) diff(); };
+
 async function load(f){ if(!f) return;
   try{ FILE=await PS.readFile(f);
     var det=PS.detectBrand(FILE.rows);
-    if(det){ $('brand').value=det; $('brandHint').textContent='Marca detectada del archivo: '+det+'. Cámbiala si no es correcta.'; }
-    else { $('brandHint').textContent='No pude detectar la marca; elígela a mano.'; }
+    if(det){ $('brand').value=det; $('brandHint').textContent='Marca detectada: '+det+'. Cámbiala si no es correcta.'; }
+    else $('brandHint').textContent='No detecté la marca; elígela a mano.';
     $('fileInfo').className='row';
     $('fileInfo').innerHTML='<span class="pill">📄 '+f.name+'</span><span class="pill">'+FILE.rows.length+' líneas</span><span class="pill">'+$('brand').value+'</span>';
     await diff(); $('preview').classList.remove('hide'); t.sizeTo('body');
   }catch(e){ alert('No pude leer: '+e.message); }
 }
-$('brand').onchange=function(){ if(FILE) diff(); };
 
-/* diff */
 async function diff(){
-  var P=$('listPend').value, G=$('listGone').value, BRAND=$('brand').value;
-  var cP=await api('GET','/lists/'+P+'/cards',{fields:'name,desc,idList'});
-  var cG=await api('GET','/lists/'+G+'/cards',{fields:'name,desc,idList'});
+  var BRAND=$('brand').value, B=SET.buckets;
+  if(!B||!B.prep||!B.gone){ alert('Configura las columnas en Ajustes primero.'); return; }
+  var cards=await api('GET','/boards/'+BOARD+'/cards',{fields:'name,desc,idList'});
   var board={};
-  cP.forEach(c=>{var m=PS.parseMarker(c.desc); if(m) board[m.key]={card:c,snap:m.snap,log:m.log,flag:m.flag,brand:m.brand,where:'pend'};});
-  cG.forEach(c=>{var m=PS.parseMarker(c.desc); if(m&&!board[m.key]) board[m.key]={card:c,snap:m.snap,log:m.log,flag:m.flag,brand:m.brand,where:'gone'};});
+  cards.forEach(c=>{var m=PS.parseMarker(c.desc); if(m) board[m.key]={card:c,idList:c.idList,snap:m.snap,log:m.log,flag:m.flag,brand:m.brand,where:(c.idList===B.gone?'gone':'active')};});
   var fm={}; FILE.rows.forEach(o=>{var k=PS.keyOf(o); if(k&&k!=='-') fm[k]=o;});
-  var nuevos=[],reap=[],camb=[],ig=[],gone=[],refresh=[];
-  for(var k in fm){var o=fm[k],cur=board[k];
-    var sameBrand = cur && (!cur.brand || cur.brand===BRAND);   // misma marca o sin marca (migración)
-    if(!cur || !sameBrand){ nuevos.push({k,o}); continue; }
+  var nuevos=[],reap=[],camb=[],mov=[],refresh=[],gone=[];
+  for(var k in fm){var o=fm[k],cur=board[k],bk=PS.bucket(PS.snapOf(o)),tl=B[bk]||B.sinprev;
+    var sameBrand=cur&&(!cur.brand||cur.brand===BRAND);
+    if(!cur||!sameBrand){ nuevos.push({k,o,bk,tl}); continue; }
     var d=PS.snapDiff(cur.snap,PS.snapOf(o));
-    if(cur.where==='gone') reap.push({k,o,cur,diff:d});
-    else if(d.length) camb.push({k,o,cur,diff:d});
-    else if((!cur.snap || cur.snap.ot===undefined) || cur.brand!==BRAND) refresh.push({k,o,cur}); // backfill OT/marca
-    else ig.push({k});
+    if(cur.where==='gone') reap.push({k,o,cur,bk,tl,diff:d});
+    else if(d.length) camb.push({k,o,cur,bk,tl,diff:d});
+    else if((!cur.snap||cur.snap.ot===undefined)||cur.brand!==BRAND) refresh.push({k,o,cur,bk,tl});
+    else if(cur.idList!==tl) mov.push({k,o,cur,bk,tl});
   }
-  // solo desaparecen las de ESTA marca
-  for(var k2 in board){ if(board[k2].where==='pend' && board[k2].brand===BRAND && !fm[k2]) gone.push({k:k2,cur:board[k2]}); }
-  DIFF={nuevos,gone,reap,camb,ig,refresh,brand:BRAND};
+  for(var k2 in board){ if(board[k2].where==='active'&&board[k2].brand===BRAND&&!fm[k2]) gone.push({k:k2,cur:board[k2]}); }
+  DIFF={nuevos,gone,reap,camb,mov,refresh,brand:BRAND};
   $('cNew').textContent=nuevos.length;$('cGone').textContent=gone.length;$('cReap').textContent=reap.length;
-  $('cChg').textContent=camb.length;$('cSame').textContent=ig.length;
+  $('cChg').textContent=camb.length;$('cMov').textContent=mov.length;
   var rows=['<tr><th>Tipo</th><th>Ref</th><th>SAP-Puesto</th><th>Detalle</th></tr>'];
-  nuevos.forEach(x=>rows.push(tr('t-new','NUEVO',PS.cardName(x.o),x.k,esc(PS.es(PS.col(x.o,'Estado')))+' · '+esc(PS.es(PS.col(x.o,'Fecha de entrega'))))));
-  reap.forEach(x=>rows.push(tr('t-reap','REAPARECE',x.cur.card.name,x.k,'Vuelve a Pendientes')));
-  camb.forEach(x=>rows.push(tr('t-chg','CAMBIO',x.cur.card.name,x.k,x.diff.map(d=>'<b>'+d.campo+':</b> '+esc(d.de)+' → '+esc(d.a)).join('<br>'))));
-  gone.forEach(x=>rows.push(tr('t-gone','DESAPARECE',x.cur.card.name,x.k,'Facturado/anulado')));
+  nuevos.forEach(x=>rows.push(tr('t-new','NUEVO',PS.cardName(x.o),x.k,'→ '+PS.bucketLabel(x.bk))));
+  reap.forEach(x=>rows.push(tr('t-reap','REAPARECE',x.cur.card.name,x.k,'→ '+PS.bucketLabel(x.bk))));
+  camb.forEach(x=>rows.push(tr('t-chg','CAMBIO',x.cur.card.name,x.k,x.diff.map(d=>'<b>'+d.campo+':</b> '+esc(d.de)+' → '+esc(d.a)).join('<br>')+'<br>→ '+PS.bucketLabel(x.bk))));
+  mov.forEach(x=>rows.push(tr('t-mov','MUEVE',x.cur.card.name,x.k,'→ '+PS.bucketLabel(x.bk))));
+  gone.forEach(x=>rows.push(tr('t-gone','DESAPARECE',x.cur.card.name,x.k,'→ Resueltos')));
   $('tbl').innerHTML=rows.join('')|| '<tr><td>Sin diferencias</td></tr>';
 }
 function tr(c,tg,n,k,d){return '<tr><td><span class="tag '+c+'">'+tg+'</span></td><td>'+esc(n)+'</td><td>'+esc(k)+'</td><td>'+d+'</td></tr>';}
 $('reparse').onclick=diff;
 
-/* aplicar */
-var LABELS={};
 async function ensureBrandLabel(brand){
   if(LABELS[brand]) return LABELS[brand];
   var labs=await api('GET','/boards/'+BOARD+'/labels',{fields:'name,color'});
@@ -171,51 +154,52 @@ async function ensureBrandLabel(brand){
 
 $('apply').onclick=async function(){
   $('run').classList.remove('hide'); $('log').innerHTML=''; t.sizeTo('body');
-  var total=DIFF.nuevos.length+DIFF.gone.length+DIFF.reap.length+DIFF.camb.length, done=0, T=PS.today(), BRAND=DIFF.brand;
+  var B=SET.buckets, BRAND=DIFF.brand, T=PS.today();
+  var total=DIFF.nuevos.length+DIFF.gone.length+DIFF.reap.length+DIFF.camb.length+DIFF.mov.length, done=0;
   var tick=()=>{done++;$('prog').style.width=Math.round(done/Math.max(total,1)*100)+'%';};
-  var P=$('listPend').value, G=$('listGone').value;
-  SET.listPend=P; SET.listGone=G;
-  await t.set('board','shared','ps_settings',SET);
   try{
     var LBL=await ensureBrandLabel(BRAND);
     for(const x of DIFF.nuevos){
-      var snap=PS.snapOf(x.o), p={idList:P,name:PS.cardName(x.o),desc:PS.buildDesc(x.o,x.k,snap,null,[],BRAND),pos:'top'};
+      var snap=PS.snapOf(x.o), p={idList:x.tl,name:PS.cardName(x.o),desc:PS.buildDesc(x.o,x.k,snap,null,[],BRAND),pos:'top'};
       var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); if(due)p.due=due;
       var card=await api('POST','/cards',p);
       if(card&&card.id) await api('POST','/cards/'+card.id+'/idLabels',{value:LBL});
-      log('s','＋ '+x.k+'  '+PS.cardName(x.o)); tick();
+      log('s','＋ '+x.k+'  → '+PS.bucketLabel(x.bk)); tick();
     }
     for(const x of DIFF.reap){
-      var snap=PS.snapOf(x.o), log0=(x.cur.log||[]).concat([{d:T,c:[{campo:'Reaparece',de:'Desaparecidos',a:'Pendientes'}]}]);
-      var p={idList:P,desc:PS.buildDesc(x.o,x.k,snap,T,log0,BRAND)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); if(due)p.due=due;
+      var snap=PS.snapOf(x.o), log0=(x.cur.log||[]).concat([{d:T,c:[{campo:'Reaparece',de:'Resueltos',a:PS.bucketLabel(x.bk)}]}]);
+      var p={idList:x.tl,desc:PS.buildDesc(x.o,x.k,snap,T,log0,BRAND)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); if(due)p.due=due;
       await api('PUT','/cards/'+x.cur.card.id,p);
       await api('POST','/cards/'+x.cur.card.id+'/idLabels',{value:LBL});
-      await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'↩ Reaparece ('+T+'). Devuelta a Pendientes.'});
+      await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'↩ Reaparece ('+T+'). → '+PS.bucketLabel(x.bk)});
       log('s','↩ '+x.k); tick();
     }
     for(const x of DIFF.camb){
       var snap=PS.snapOf(x.o), log0=(x.cur.log||[]).concat([{d:T,c:x.diff}]);
-      var p={desc:PS.buildDesc(x.o,x.k,snap,T,log0,BRAND)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); p.due=due||null;
+      var p={idList:x.tl,desc:PS.buildDesc(x.o,x.k,snap,T,log0,BRAND)}; var due=PS.parseDue(PS.col(x.o,'Fecha de entrega')); p.due=due||null;
       await api('PUT','/cards/'+x.cur.card.id,p);
       await api('POST','/cards/'+x.cur.card.id+'/idLabels',{value:LBL});
       await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'🔔 Cambios ('+T+'):\n'+x.diff.map(d=>'• '+d.campo+': '+d.de+' → '+d.a).join('\n')});
-      log('w','✎ '+x.k+' ('+x.diff.map(d=>d.campo).join(', ')+')'); tick();
+      log('w','✎ '+x.k+' ('+x.diff.map(d=>d.campo).join(', ')+') → '+PS.bucketLabel(x.bk)); tick();
+    }
+    for(const x of DIFF.mov){
+      await api('PUT','/cards/'+x.cur.card.id,{idList:x.tl});
+      log('m','» '+x.k+' → '+PS.bucketLabel(x.bk)); tick();
     }
     for(const x of DIFF.gone){
-      await api('PUT','/cards/'+x.cur.card.id,{idList:G});
+      await api('PUT','/cards/'+x.cur.card.id,{idList:B.gone});
       await api('POST','/cards/'+x.cur.card.id+'/actions/comments',{text:'❌ Desapareció del listado el '+T+' (posible facturación o anulación).'});
       log('e','✗ '+x.k+'  '+x.cur.card.name); tick();
     }
-    // refresco silencioso: añade OT/marca a tarjetas antiguas sin marcarlas como cambio
     for(const x of (DIFF.refresh||[])){
       var snap=PS.snapOf(x.o);
-      await api('PUT','/cards/'+x.cur.card.id,{desc:PS.buildDesc(x.o,x.k,snap,x.cur.flag,x.cur.log||[],BRAND)});
+      await api('PUT','/cards/'+x.cur.card.id,{idList:x.tl,desc:PS.buildDesc(x.o,x.k,snap,x.cur.flag,x.cur.log||[],BRAND)});
       await api('POST','/cards/'+x.cur.card.id+'/idLabels',{value:LBL});
     }
-    if(DIFF.refresh && DIFF.refresh.length) log('s','↻ '+DIFF.refresh.length+' tarjetas: OT/marca añadida.');
+    if(DIFF.refresh&&DIFF.refresh.length) log('s','↻ '+DIFF.refresh.length+' tarjetas actualizadas (OT/marca/columna).');
     $('prog').style.width='100%';
     await t.set('board','shared','ps_last',{cambios:DIFF.camb.length,gone:DIFF.gone.length,nuevos:DIFF.nuevos.length,fecha:T,brand:BRAND});
-    log('s',BRAND+' → '+DIFF.nuevos.length+' nuevos · '+DIFF.gone.length+' desaparecidos · '+DIFF.reap.length+' reaparecen · '+DIFF.camb.length+' cambios.');
+    log('s',BRAND+' → '+DIFF.nuevos.length+' nuevos · '+DIFF.gone.length+' desaparecidos · '+DIFF.camb.length+' cambios · '+DIFF.mov.length+' cambian columna.');
     setTimeout(()=>t.closeModal(), 1800);
   }catch(e){ log('e','ERROR: '+e.message); }
 };

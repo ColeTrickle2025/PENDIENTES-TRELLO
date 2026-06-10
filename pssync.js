@@ -193,5 +193,25 @@ function etaShort(snap){
   return t.replace(/Distribucion controlada.*/i,'Campaña seg.').slice(0,22);
 }
 
-window.PS={readFile,col,keyOf,snapOf,snapDiff,cardName,isVI,detectBrand,buildDesc,parseMarker,parseDue,today,estadoColor,etaShort,es,SEP};
+/* ---------- clasificación en columnas (cubos de estado) ---------- */
+var BUCKETS=[
+  {code:'prep',    label:'🟢 En preparación'},
+  {code:'fecha',   label:'📅 Con fecha estimada'},
+  {code:'sinprev', label:'🟠 Sin previsión'},
+  {code:'stock',   label:'🔴 Sin stock / a anular'},
+  {code:'alt',     label:'↔ Alternativa propuesta'},
+  {code:'gone',    label:'✅ Resueltos / desaparecidos'}
+];
+function bucket(snap){
+  var e=es((snap&&snap.est)||'').toLowerCase(), t=es((snap&&snap.ent)||'').toLowerCase(), a=(snap&&snap.alt)||'';
+  if(a) return 'alt';
+  if(/anular/.test(e)) return 'stock';
+  if(/penuria|no disponible/.test(t)) return 'stock';
+  if(/prepar/.test(e)) return 'prep';
+  if(/\d{4}-\d{2}-\d{2}/.test(t)) return 'fecha';
+  return 'sinprev';
+}
+function bucketLabel(code){ for(var i=0;i<BUCKETS.length;i++) if(BUCKETS[i].code===code) return BUCKETS[i].label; return code; }
+
+window.PS={readFile,col,keyOf,snapOf,snapDiff,cardName,isVI,detectBrand,buildDesc,parseMarker,parseDue,today,estadoColor,etaShort,es,bucket,bucketLabel,BUCKETS,SEP};
 })();

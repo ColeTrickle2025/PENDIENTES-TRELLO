@@ -1,53 +1,82 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <script src="https://p.trellocdn.com/power-up.min.js"></script>
-<script src="js/config.js"></script>
+<script src="js/config.js?v=4"></script>
+<script src="js/pssync.js?v=4"></script>
 <style>
   body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#172b4d;padding:16px}
-  label{font-size:12px;color:#5e6c84;font-weight:600;display:block;margin:10px 0 3px}
+  label{font-size:12px;color:#5e6c84;font-weight:600;display:block;margin:9px 0 3px}
   select,input{width:100%;padding:8px;border:1px solid #dfe1e6;border-radius:6px;font-size:14px}
-  button{background:#0c66e4;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer;margin-top:14px}
+  button{background:#0c66e4;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer;margin-top:12px;width:100%}
+  button.alt{background:#1f845a}
   .mut{color:#5e6c84;font-size:12px}
+  hr{border:none;border-top:1px solid #ebecf0;margin:14px 0}
 </style></head><body>
-<button id="importNow" style="background:#1f845a;width:100%;margin-bottom:12px">📥 Importar export ahora</button>
-<label>Lista de PENDIENTES</label><select id="listPend"></select>
-<label>Lista de DESAPARECIDOS / RESUELTOS</label><select id="listGone"></select>
+<div id="connectBox"></div>
+
+<button id="autocreate" class="alt">✨ Crear las columnas automáticamente</button>
+<p class="mut">Crea las 6 columnas en el tablero y las deja mapeadas. Si ya existen por nombre, las reutiliza.</p>
+
+<hr>
+<div id="maps"></div>
+
 <label>Webhook de Discord para alertas <span class="mut">(opcional)</span></label>
 <input id="discord" placeholder="https://discord.com/api/webhooks/...">
 <label>Días que dura el badge 🔔 tras un cambio</label><input id="days" type="number" min="0" value="1">
 <button id="save">Guardar</button>
 <p class="mut" id="msg"></p>
+
 <script>
 var t=TrelloPowerUp.iframe({appKey:PS_CONFIG.APP_KEY,appName:PS_CONFIG.APP_NAME});
-var KEY=PS_CONFIG.APP_KEY, TOKEN='';
+var KEY=PS_CONFIG.APP_KEY, TOKEN='', BOARD=t.getContext().board, LISTS=[], SET={};
+function api(method,path,params){
+  var u=new URL('https://api.trello.com/1'+path); u.searchParams.set('key',KEY); u.searchParams.set('token',TOKEN);
+  for(var k in params) if(params[k]!=null) u.searchParams.set(k,params[k]);
+  return fetch(u,{method:method||'GET'}).then(r=>r.json().catch(()=>({})));
+}
+function opts(sel){ return '<option value=""></option>'+LISTS.map(l=>'<option value="'+l.id+'"'+(l.id===sel?' selected':'')+'>'+l.name+'</option>').join(''); }
+
 (async function(){
   TOKEN=await t.getRestApi().getToken().catch(()=> '');
   if(!TOKEN){
-    var b=document.createElement('button');
-    b.textContent='🔗 Conectar con Trello';
-    b.style.cssText='background:#0c66e4;width:100%;margin-bottom:12px';
-    b.onclick=function(){
-      t.getRestApi().authorize({scope:'read,write',expiration:'never'})
-        .then(function(){ location.reload(); })
-        .catch(function(e){ alert('No se pudo autorizar: '+(e&&e.message||e)); });
-    };
-    document.body.insertBefore(b, document.body.firstChild);
+    var b=document.createElement('button'); b.textContent='🔗 Conectar con Trello';
+    b.onclick=function(){ t.getRestApi().authorize({scope:'read,write',expiration:'never'}).then(()=>location.reload()).catch(e=>alert('No se pudo autorizar: '+(e&&e.message||e))); };
+    document.getElementById('connectBox').appendChild(b);
   }
-  var s=await t.get('board','shared','ps_settings',{})||{};
-  var B=t.getContext().board, lists=[];
-  if(TOKEN){ lists=await fetch('https://api.trello.com/1/boards/'+B+'/lists?fields=name&filter=open&key='+KEY+'&token='+TOKEN).then(r=>r.json()); }
-  function fill(id,sel){var e=document.getElementById(id);lists.forEach(l=>{var o=document.createElement('option');o.value=l.id;o.textContent=l.name;if(l.id===sel)o.selected=true;e.appendChild(o);});}
-  fill('listPend',s.listPend); fill('listGone',s.listGone);
-  document.getElementById('discord').value=s.discord||'';
-  document.getElementById('days').value=(s.alertDays!=null?s.alertDays:1);
+  SET=await t.get('board','shared','ps_settings',{})||{};
+  if(!SET.buckets) SET.buckets={};
+  if(TOKEN) LISTS=await api('GET','/boards/'+BOARD+'/lists',{fields:'name',filter:'open'});
+  renderMaps();
+  document.getElementById('discord').value=SET.discord||'';
+  document.getElementById('days').value=(SET.alertDays!=null?SET.alertDays:1);
 })();
-document.getElementById('importNow').onclick=function(){
-  t.modal({url:'import.html',title:'Cargar export de Power Supply',fullscreen:true,height:600});
+
+function renderMaps(){
+  var html='';
+  PS.BUCKETS.forEach(function(bk){
+    html+='<label>'+bk.label+'</label><select data-code="'+bk.code+'">'+opts(SET.buckets[bk.code])+'</select>';
+  });
+  document.getElementById('maps').innerHTML=html;
+}
+
+document.getElementById('autocreate').onclick=async function(){
+  if(!TOKEN){ alert('Conéctate primero con Trello.'); return; }
+  for(const bk of PS.BUCKETS){
+    if(SET.buckets[bk.code]) continue;
+    var ex=LISTS.find(l=>l.name===bk.label);
+    if(ex){ SET.buckets[bk.code]=ex.id; continue; }
+    var r=await api('POST','/lists',{name:bk.label,idBoard:BOARD,pos:'bottom'});
+    if(r&&r.id){ SET.buckets[bk.code]=r.id; LISTS.push({id:r.id,name:bk.label}); }
+  }
+  renderMaps();
+  document.getElementById('msg').textContent='Columnas creadas y mapeadas. Pulsa Guardar.';
 };
+
 document.getElementById('save').onclick=async function(){
-  var s={listPend:document.getElementById('listPend').value,listGone:document.getElementById('listGone').value,
-    discord:document.getElementById('discord').value.trim(),alertDays:+document.getElementById('days').value};
-  await t.set('board','shared','ps_settings',s);
+  document.querySelectorAll('#maps select').forEach(function(s){ SET.buckets[s.getAttribute('data-code')]=s.value; });
+  SET.discord=document.getElementById('discord').value.trim();
+  SET.alertDays=+document.getElementById('days').value;
+  await t.set('board','shared','ps_settings',SET);
   document.getElementById('msg').textContent='Guardado ✓'; setTimeout(()=>t.closePopup(),700);
 };
 </script></body></html>
