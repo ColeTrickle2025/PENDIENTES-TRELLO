@@ -199,12 +199,10 @@ var BUCKETS=[
   {code:'fecha',   label:'📅 Con fecha estimada'},
   {code:'sinprev', label:'🟠 Sin previsión'},
   {code:'stock',   label:'🔴 Sin stock / a anular'},
-  {code:'alt',     label:'↔ Alternativa propuesta'},
   {code:'gone',    label:'✅ Resueltos / desaparecidos'}
 ];
 function bucket(snap){
-  var e=es((snap&&snap.est)||'').toLowerCase(), t=es((snap&&snap.ent)||'').toLowerCase(), a=(snap&&snap.alt)||'';
-  if(a) return 'alt';
+  var e=es((snap&&snap.est)||'').toLowerCase(), t=es((snap&&snap.ent)||'').toLowerCase();
   if(/anular/.test(e)) return 'stock';
   if(/penuria|no disponible/.test(t)) return 'stock';
   if(/prepar/.test(e)) return 'prep';
